@@ -1,4 +1,4 @@
- #include <Arduino_FreeRTOS.h>
+#include <Arduino_FreeRTOS.h>
  #include<semphr.h>  
  #define redLed 7  
  #define greenLed 8 
@@ -12,7 +12,7 @@
  //---------Change detection using derativitive decleraton--------------
  long arr[4]={0,0,0,0};
  long velo[4] = {0,0,0,0};
- long newData;
+ long newData = 0;
  long derv;
  //---------Take picture---------------------------------------
  int takepic = 0;
@@ -54,19 +54,18 @@
   new_Data_Semaphore = xSemaphoreCreateMutex();
   xTaskCreate(ultraRangeTask, "Untra range Task", 128, NULL, 1, &ultraTask_handle); 
   xTaskCreate(changeDetectTask, "Detect any change Task", 128, NULL, 1, &derviTask_handle);  
-  xTaskCreate(takePicTask, "Takes a picture Task", 128, NULL, 1, &picTask_handle);  
+  xTaskCreate(takePicTask, "Takes a picture Task", 128, NULL, 2, &picTask_handle);  
  }  
  
  void loop() {}  
  
  void ultraRangeTask(void *pvParameters){  
-  vTaskSuspend(derviTask_handle);
   pinMode(redLed, OUTPUT); 
   pinMode(trigPin, OUTPUT);
   pinMode(ecoPin, INPUT);
-  const TickType_t xDelay = 100 / portTICK_PERIOD_MS; 
   while(1){  
    //Serial.print("Ultrasonic ranging system engage.\n");
+   vTaskSuspend(derviTask_handle);
    digitalWrite(trigPin, LOW);
    delayMicroseconds(2);
    digitalWrite(trigPin, HIGH);
@@ -74,76 +73,64 @@
    digitalWrite(trigPin, LOW);
    duration = pulseIn(ecoPin, HIGH);
    distanceCm= duration*0.034/2;
+   Serial.print("Distance CM:");
+    Serial.println(distanceCm);
    //distanceInch = duration*0.0133/2;
-   if(distanceCm < 400){
-    if(xSemaphoreTake(new_Data_Semaphore,0) == pdTRUE){
+
       newData = distanceCm;
-      xSemaphoreGive(new_Data_Semaphore);
       vTaskResume(derviTask_handle);
-      vTaskSuspend(ultraTask_handle);
-    }
-   }
-   else
-      newData = newData;
-  }  
+   
+  } 
  }  
   void changeDetectTask(void *pvParameters){  
   pinMode(greenLed, OUTPUT);  
-  const TickType_t xDelay = 100 / portTICK_PERIOD_MS; 
   while(1){  
-    if(xSemaphoreTake(new_Data_Semaphore,0) == pdTRUE){
-     //vTaskSuspend(ultraTask_handle);
-      mid_pur(newData); // shift the new data in the array
+     vTaskSuspend(ultraTask_handle);
+      //mid_pur(newData); // shift the new data in the array
       //MACQ_Put(midDerivitive());  // puting the first derivitive in the final array
       MACQ_Put(newData);  // putting the new data in the final array
                           // as there would no longer use of 2nd derivitive
       derv = abs(Deravitive()); // getting the abs of the drivitinve of the final array
-      Serial.print("dV/dt: ");
-      Serial.println(derv);
+       Serial.print("dV/dt: ");
+       Serial.println(derv);
+//      Serial.print("newData: ");
+//      Serial.println(newData);
       if(derv > 100){
-       if(xSemaphoreTake(pic_Taken_Semaphore,0) == pdTRUE){
+          
         takepic = 1;
         vTaskResume(picTask_handle);
-        xSemaphoreGive(pic_Taken_Semaphore);
+        Serial.println("changedetecttask -> derv > 100");
        }
        else
         takepic = 0;
-      }
+
       xSemaphoreGive(new_Data_Semaphore);
     vTaskResume(ultraTask_handle);
-    }
   }  
  }
  
   void takePicTask(void *pvParameters){    
-  const TickType_t xDelay = 10000 / portTICK_PERIOD_MS; 
   pinMode(picPin, OUTPUT);
+        const TickType_t xDelay = 1000 / portTICK_PERIOD_MS; 
+        const TickType_t xDelay2 = 1000 / portTICK_PERIOD_MS; 
   while(1){  
-   if(xSemaphoreTake(busy_Semaphore,0) == pdTRUE){
-      if(xSemaphoreTake(pic_Taken_Semaphore,0) == pdTRUE){
       Serial.print("taking piture\n");
-      //vTaskSuspend(ultraTask_handle);
-      //vTaskSuspend(derviTask_handle);
         
       if(takepic == 1){
        digitalWrite(picPin, HIGH);
-//        for(int i = 0; i<4; i++){
-//          arr[i] = 0;
-//          velo[i] = 0;
-//        }
-        vTaskDelay(xDelay);
-        
+        Serial.print("picture Taken\n");
+        Serial.print("picture Taken\n");
+        Serial.print("picture Taken\n");
+        Serial.print("picture Taken\n");
         Serial.print("picture Taken\n");
         takepic = 0;
+        vTaskDelay(xDelay);
         digitalWrite(picPin, LOW);
+        vTaskDelay(xDelay2);
       }
-      Serial.print("picture taken\n:");
-      xSemaphoreGive(pic_Taken_Semaphore);
-      //vTaskResume(ultraTask_handle);
-      //vTaskResume(derviTask_handle);
+      else
+     Serial.print("picture Not Taken\n");
      vTaskSuspend(picTask_handle);
-     }
-     xSemaphoreGive(busy_Semaphore);
-   }
   }  
  }
+ 
